@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <style>
+        fieldset {
+            box-sizing: border-box;
+            float: left;
+        }
+
+        .fieldsetLostConnection {
+            border-color: red;
+            border-style: dashed;
+        }
+
+        main {
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        html {
+            margin: 0;
+            background-color: #181818;
+            color: white;
+        }
+
+        .errorItem {
+            color: white;
+        }
+
+        ul li::marker {
+            content: '⚠️';
+        }
+    </style>
+
+    <script>
+
+        const Config = {
+            accessPoints: {
+                //eric
+                "74:83:c2:03:44:9e": "Home",
+                "60:a4:4c:c5:ef:b4": "Black router",
+                //marks
+                "e0:63:da:7d:1b:2c": "Shop",
+                "f4:92:bf:5a:8f:95": "Barn"
+            },
+            pis: [
+                {
+                    "name": "Pi 4",
+                    "ip": "192.168.1.147"
+                },
+                {
+                    "name": "Pi 4 NV",
+                    "ip": "192.168.1.241"
+                },
+				{
+                    "name": "Pi 4 Webcam test",
+                    "ip": "192.168.1.194"
+                }
+            ],
+            ports: {
+                MONITOR: 1337,
+                CAM: 8080,
+            }
+        };
+
+        // function msToHumanReadable(num) {
+        //     var sec_num = parseInt(num / 1000); // don't forget the second param
+        //     var days = Math.floor(sec_num / 86400);
+        //     var hours = Math.floor(sec_num / 3600);
+        //     var minutes = Math.floor((sec_num - (hours * 3600)) / 60);
+        //     var seconds = sec_num - (hours * 3600) - (minutes * 60);
+
+        //     if (days > 0) {
+        //         hours = hours - (24 * days);
+        //         return days + ' Days ' + hours + ' Hours ' + minutes + ' Minutes ' + seconds + ' Seconds';
+        //     } else if (hours > 0) {
+        //         return hours + ' Hours ' + minutes + ' Minutes ' + seconds + ' Seconds';
+        //     } else if (minutes > 0) {
+        //         return minutes + ' Minutes ' + seconds + ' Seconds';
+        //     } else if (seconds > 0) {
+        //         return seconds + ' Seconds';
+        //     } else if (seconds == 0) {
+        //         return this + ' Milliseconds';
+        //     } else {
+        //         return days + ' Days ' + hours + ' Hours ' + minutes + ' Minutes ' + seconds + ' Seconds';
+        //     }
+        // }
+
+        function msToHumanReadable2(milliseconds) {
+
+            const totalSeconds = parseInt(Math.floor(milliseconds / 1000));
+            const totalMinutes = parseInt(Math.floor(totalSeconds / 60));
+            const totalHours = parseInt(Math.floor(totalMinutes / 60));
+            const days = parseInt(Math.floor(totalHours / 24));
+
+            const seconds = parseInt(totalSeconds % 60);
+            const minutes = parseInt(totalMinutes % 60);
+            const hours = parseInt(totalHours % 24);
+
+            let time = '1s';
+            if (days > 0) {
+                time = `${days}d:${hours}h:${minutes}m:${seconds}s`;
+            } else if (hours > 0) {
+                time = `${hours}h:${minutes}m:${seconds}s`;
+            } else if (minutes > 0) {
+                time = `${minutes}m:${seconds}s`;
+            } else if (seconds > 0) {
+                time = `${seconds}s`;
+            }
+            return time;
+        }
+
+        function percentToColor(percent, start, end) {
+            var a = percent / 100,
+                b = (end - start) * a,
+                c = b + start;
+
+            // Return a CSS HSL string
+            return 'hsl(' + c + ', 100%, 50%)';
+        }
+
+        const COLOR_RED = 0, COLOR_GREEN = 120;
+
+        function updatePercent(spanId, amount, lowIsGreen = true) {
+
+            const lowColor = lowIsGreen ? COLOR_GREEN : COLOR_RED;
+            const highColor = lowIsGreen ? COLOR_RED : COLOR_GREEN;
+            const color = percentToColor(amount, lowColor, highColor);
+            const text = amount + '%';
+
+            document.getElementById(spanId).style.color = color;
+
+            updateSpan(spanId, text);
+        }
+
+        function updateTime(spanId, amount) {
+            updateSpan(spanId, msToHumanReadable2(amount));
+        }
+
+        function updateSpan(spanId, text) {
+            document.getElementById(spanId).innerHTML = text;
+        }
+
+        function updateList(listId, jsonList) {
+            var str = "";
+            for (var i in jsonList) {
+                str += `<li class="errorItem">` + jsonList[i] + `</li>`;
+            }
+            document.getElementById(listId).innerHTML = str;
+        }
+
+        function getJSON(url, callback) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.responseType = 'json';
+            xhr.timeout = 500;
+            xhr.onload = function () {
+                var status = xhr.status;
+                if (status === 200) {
+                    callback(null, xhr.response);
+                } else {
+                    callback(status, xhr.response);
+                }
+            };
+            xhr.ontimeout = function (e) {
+                callback(e, undefined);
+            };
+            xhr.send();
+        }
+
+        function createOrUpdate(pi, data) {
+            const id = pi.id;
+            var fieldset = document.getElementById("fieldset" + id);
+            if (fieldset == null) {
+                document.getElementById("main").innerHTML += getNewFieldset(pi);
+                fieldset = document.getElementById("fieldset" + id);
+            }
+
+            if (data == undefined || data == null) {
+                //make the pi red
+                fieldset.classList.add("fieldsetLostConnection");
+            }
+            else {
+                fieldset.classList.remove("fieldsetLostConnection");
+
+
+                updateTime("processUptime" + id, data.procUptime);
+                updateTime("osUptime" + id, data.osUptime);
+
+                //ram
+                updatePercent("ramPercent" + id, data.ram.percentUsed);
+                updateSpan("ramMBUsed" + id, data.ram.used);
+                updateSpan("ramMBTotal" + id, data.ram.total);
+
+                //cpu
+                updatePercent("cpuPercent" + id, data.cpu.percentUsed);
+
+                //wifi dBm
+                updatePercent("signalLevelPercent" + id, data.wifi.signalLevel.percent, false);
+                updateSpan("signalLeveldBm" + id, data.wifi.signalLevel.dBm);
+
+                //wifi AP
+                updateSpan("wifiAPName" + id, getAPNameFromMac(data.wifi.apmac));
+                updateSpan("wifiAPMac" + id, data.wifi.apmac);
+
+                //Errors
+                updateList("errorsList" + id, data.throttledError)
+
+            }
+
+
+
+            //os
+            updateSpan("ipAddress" + id, pi.ip);
+
+        }
+
+        function getAPNameFromMac(mac) {
+            var accessPoint = Config.accessPoints[mac];
+            if (accessPoint == undefined) {
+                return "Unknown Name";
+            }
+            return accessPoint;
+        }
+
+        function getNewFieldset(pi) {
+            const id = pi.id;
+            return `
+        <fieldset id="fieldset` + id + `">
+            <legend>` + pi.name + `</legend>
+            <p>IP: <span id="ipAddress` + id + `"></span></p>
+            <p>Process Uptime: <span id="processUptime` + id + `"></span></p>
+            <p>OS Uptime: <span id="osUptime` + id + `"></span></p>
+            <p>Ram Usage: <span id="ramPercent` + id + `"></span> (<span id="ramMBUsed` + id + `"></span>MB / <span id="ramMBTotal` + id + `"></span>MB)</p>
+            <p>CPU Usage: <span id="cpuPercent` + id + `"></span></p>
+            <p>Wifi Signal Level: <span id="signalLevelPercent` + id + `"></span> (<span id="signalLeveldBm` + id + `"></span> dBm)</p>
+            <p>WiFi AP: <span id="wifiAPName` + id + `"></span> (<span id="wifiAPMac` + id + `"></span>)</p>
+            <p>Errors:
+            <ul id="errorsList` + id + `">
+            </ul>
+            </p>
+        </fieldset>
+        `
+        }
+
+        function start() {
+            console.log("Starting!");
+
+
+            setInterval(updateAllPis, 1000);
+            updateAllPis();
+
+        }
+
+        function updateAllPis() {
+            for (var i = 0; i < Config.pis.length; i++) {
+                var pi = Config.pis[i];
+                pi.id = i + 1;
+
+                updatePi(pi);
+
+            }
+        }
+
+        function updatePi(pi) {
+            try {
+                var piJson = getJSON("http://" + pi.ip + ":" + Config.ports.MONITOR + "/status", function (err, data) {
+
+                    if (err) {
+                        console.log("Error in ", pi, ":", err);
+                        createOrUpdate(pi, undefined)
+                        return;
+                    }
+
+                    console.log("I got the data for ", pi, "Data:", data);
+                    createOrUpdate(pi, data)
+
+                });
+            }
+            catch (err) {
+                console.log("Issue: ", pi, err)
+            }
+        }
+
+
+
+
+        start();
+    </script>
+
+
+</head>
+
+<body>
+    <main id="main">
+
+        <!--
+        <fieldset id="fieldset1">
+            <legend>Pi #1</legend>
+            <p>Process Uptime: <span id="processUptime"></span></p>
+            <p>OS Uptime: <span id="osUptime"></span></p>
+            <p>Ram Usage: <span id="ramPercent"></span> (<span id="ramMBUsed">680</span>MB / <span
+                    id="ramMBTotal">7143</span>MB)</p>
+            <p>CPU Usage: <span id="cpuPercent"></span></p>
+            <p>Wifi Signal Level: <span id="signalLevelPercent"></span> (<span id="signalLeveldBm"></span> dBm)</p>
+            <p>WiFi AP: <span id="wifiAPName">Main</span> (<span id="wifiAPMac">71:81:d8:18:66:3b</span>)</p>
+
+        </fieldset>
+       
+        <fieldset id="fieldset2">
+            <legend>Pi #2</legend>
+            <p>Process Uptime: <span id="processUptime2"></span></p>
+            <p>OS Uptime: <span id="osUptime2"></span></p>
+            <p>Ram Usage: <span id="ramPercent2"></span> (<span id="ramMBUsed2">6332</span>MB / <span
+                    id="ramMBTotal2">7143</span>MB)</p>
+            <p>CPU Usage: <span id="cpuPercent2"></span></p>
+            <p>Wifi Signal Level: <span id="signalLevelPercent2"></span> (<span id="signalLeveldBm2"></span> dBm)</p>
+            <p>WiFi AP: Sub (b1:21:cc:26:81:3b)</p>
+        </fieldset>
+
+        <fieldset id="fieldset3" class="fieldsetLostConnection">
+            <legend>Pi #3</legend>
+            <p>Process Uptime: 3 Hours 26 Minutes 51 Seconds</p>
+            <p>OS Uptime: 9 Hours 32 Minutes 11 Seconds</p>
+            <p>Ram Usage: null</p>
+            <p>CPU Usage: null</p>
+            <p>Wifi Signal Level: null</p>
+            <p>WiFi AP: Sub (b1:21:cc:26:81:3b)</p>
+        </fieldset>
+     -->
+    </main>
+
+    <script>
+        // updatePercent("ramPercent", 90);
+        // updatePercent("cpuPercent", 70);
+        // updatePercent("signalLevelPercent", 100, false);
+        // updateSpan("signalLeveldBm", -25)
+        // updateTime("osUptime", 3140990)
+        // updateTime("processUptime", 25470)
+
+
+        // updatePercent("ramPercent2", 80);
+        // updatePercent("cpuPercent2", 50);
+        // updatePercent("signalLevelPercent2", 10, false);
+        // updateSpan("signalLeveldBm2", -90)
+        // updateTime("osUptime2", 31440990)
+        // updateTime("processUptime2", 25222470)
+    </script>
+
+</body>
+
+</html>
